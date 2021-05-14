@@ -1,4 +1,5 @@
 import tensorflow as tf
+import boto3
 from absl.flags import FLAGS
 
 @tf.function
@@ -117,14 +118,22 @@ def parse_tfrecord(tfrecord, class_table, size):
 
     return x_train, y_train
 
+def get_data_files(file_path):
+    s3 = boto3.resource('s3')
+    bucketname = file_path.split('/')[2]
+    path = '/'.join(file_path.split('/')[3:])
+    bucket = s3.Bucket(bucketname)
+    objs = [f for f in bucket.objects.filter(Prefix=path).all()]
+    files = ['s3://'+o.bucket_name+'/'+o.key for o in objs]
+    return files
 
 def load_tfrecord_dataset(file_pattern, class_file, size=416):
     LINE_NUMBER = -1  # TODO: use tf.lookup.TextFileIndex.LINE_NUMBER
     class_table = tf.lookup.StaticHashTable(tf.lookup.TextFileInitializer(
         class_file, tf.string, 0, tf.int64, LINE_NUMBER, delimiter="\n"), -1)
 
-    files = tf.data.Dataset.list_files(file_pattern)
-    dataset = files.flat_map(tf.data.TFRecordDataset)
+    files = get_data_files(file_pattern)
+    dataset = tf.data.TFRecordDataset(files)
     return dataset.map(lambda x: parse_tfrecord(x, class_table, size))
 
 
